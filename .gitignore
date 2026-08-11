@@ -47,3 +47,12 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# --- CUSTOM ADDITIONS FOR THESIS ---
+
+# Large Data Files - DO NOT UPLOAD TO GITHUB
+results_2023.csv
+*.csv
+
+# Optional: Ignore generated plots if you do not want them in the repo
+# *.png
