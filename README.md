@@ -75,7 +75,3 @@ This code is released under the MIT License. See LICENSE file for details.
   school={Erasmus University Rotterdam}
 }
 ```
-
-## Contact
-
-For questions about the code or analysis, please refer to the thesis documentation included in this repository.
