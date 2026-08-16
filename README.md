@@ -25,7 +25,7 @@ packages <- c("tidyverse", "tidymodels", "xgboost", "ranger", "glmnet",
 install.packages(packages)
 ```
 
-3. Download the 2023 Stack Overflow Developer Survey from [Stack Overflow](https://survey.stackoverflow.co/) and save as `results_2023.csv` in your working directory
+3. Download the 2023 Stack Overflow Developer Survey from [Stack Overflow](https://survey.stackoverflow.co/) and save as `results_2023.csv` in your working directory and change path in code.
 
 ## How to Run
 
