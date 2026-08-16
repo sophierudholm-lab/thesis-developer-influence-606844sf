@@ -53,7 +53,7 @@ This script validates results using an alternative target variable encoding.
 
 - **Best Model**: XGBoost (ROC-AUC = 0.818)
 - **Practical Value**: Developers in top 10% of predictions are 3.42× more likely to report high purchase influence
-- **Key Finding**: Organization size is the strongest predictor; smaller organizations (<100 employees) show higher purchase influence
+- **Key Finding**: Organization size has the largest overall contribution to model predictions, with smaller organisations (<100) generally associated with higher predicted purchase influence.
 
 ## Files
 
