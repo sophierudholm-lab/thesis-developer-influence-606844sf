@@ -9,10 +9,7 @@ library(shapviz)
 library(probably)
 library(future.apply)
 library(yardstick)
-library(clustMixType)
-library(mclust)
 
-# 0. LOAD DATA
 survey2023 <- read_csv('results_2023.csv')
 
 # 1. FILTER TO RELEVANT COHORT

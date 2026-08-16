@@ -12,10 +12,30 @@ library(yardstick)
 library(clustMixType)
 library(mclust)
 
-# 0. LOAD DATA
 survey2023 <- read_csv('results_2023.csv')
 
-# 1. FILTER TO RELEVANT COHORT
+# Examining potential non-response bias
+balanceTableData <- survey2023 %>%
+  filter(MainBranch == "I am a developer by profession",
+         str_detect(Employment, "Employed, full-time")) %>%
+  mutate(status = if_else(is.na(PurchaseInfluence), "Missing", "Reported"))
+
+varsToCompare <- c("OrgSize", "YearsCodePro", "DevType", "RemoteWork")
+
+for (var in varsToCompare) {
+  comparisonTable <- balanceTableData %>%
+    filter(!is.na(.data[[var]])) %>%
+    mutate(cleanVar = fct_lump_n(as.factor(.data[[var]]), n = 5)) %>% 
+    count(status, cleanVar) %>%
+    group_by(status) %>%
+    mutate(percentage = round(n / sum(n) * 100, 1)) %>%
+    select(-n) %>%
+    pivot_wider(names_from = status, values_from = percentage)
+  cat("\n--- Comparison for:", var, "(%) ---\n")
+  print(comparisonTable)
+}
+
+# STEP 1. FILTER TO RELEVANT COHORT
 filteredRespondents <- survey2023 %>%
   filter(
     MainBranch == "I am a developer by profession",
@@ -24,7 +44,7 @@ filteredRespondents <- survey2023 %>%
   )
 c(raw = nrow(survey2023), cohort = nrow(filteredRespondents))
 
-# STEP 2: FEATURE ENGINEERING (BEFORE any column drops)
+# STEP 2: FEATURE ENGINEERING 
 filteredRespondents <- filteredRespondents %>%
   mutate(usesAiTools = as.integer(!is.na(`AIToolCurrently Using`)))
 
@@ -497,10 +517,6 @@ shapBar <- sv_importance(shp, kind = "bar", max_display = 20) +
 print(shapBar)
 ggsave("shapBar.png", plot = shapBar, width = 8, height = 6, dpi = 300)
 
-saveRDS(xgbTuneResults, "xgb_tune.rds")
-saveRDS(rfTuneResults,  "rf_tune.rds")
-saveRDS(logTuneResults, "log_tune.rds")
-
 # Gain Analysis for the final XGBoost model on the test set
 testPreds <- collect_predictions(finalXgbRes)
 gainData <- gain_curve(testPreds, truth = binaryInfluence, .pred_High_Influence)
@@ -534,7 +550,7 @@ liftPlot <- autoplot(liftData) +
 print(liftPlot)
 ggsave("liftChart.png", plot = liftPlot, width = 8, height = 6, dpi = 300)
 
-# Print exact numbers for Results section (lift at top 10%, gain at the top 20%)
+# Exact lift numbers
 liftData %>%
   slice_min(abs(.percent_tested - 10)) %>%
   select(.percent_tested, .lift)
@@ -649,11 +665,6 @@ influenceSummary <- clusteringResults %>%
     .groups = "drop"
   )
 
-getMode <- function(x) {
-  uniqueValues <- unique(na.omit(x))
-  uniqueValues[which.max(tabulate(match(x, uniqueValues)))]
-}
-
 getTopCategories <- function(x, n = 3) {
   x <- na.omit(x)
   if(length(x) == 0) return(NA_character_)
@@ -674,7 +685,6 @@ categoricalProfiles <- clusteringResults %>%
     .groups = "drop"
   )
 
-# 1. Update numericProfiles to include all 7 composite flags
 numericProfiles <- clusteringResults %>%
   group_by(Cluster) %>%
   summarise(
@@ -726,7 +736,6 @@ plot_influence <- ggplot(influenceSummary, aes(x = Cluster, y = influencePercent
 print(plot_influence)
 ggsave("cluster_influence_bar.png", plot = plot_influence, width = 6, height = 5, dpi = 300)
 
-
 # 2. Experience Level Distribution per Cluster
 plot_experience <- clusteringResults %>%
   count(Cluster, experienceLevel) %>%
@@ -748,26 +757,21 @@ plot_experience <- clusteringResults %>%
 print(plot_experience)
 ggsave("cluster_experience_dist.png", plot = plot_experience, width = 7, height = 5, dpi = 300)
 
-# 2. Generate the comprehensive Behavioral and Technological Adoption bar chart
+# 2.1. Technological Adoption bar chart
 plot_tech_adoption <- numericProfiles %>%
   select(Cluster, aiPercentage, enterpriseCloudPercentage, devOpsPercentage, 
          sysEngPercentage, msEnterprisePercentage, modernJsPercentage, traditionalWebPercentage) %>%
   pivot_longer(cols = -Cluster, names_to = "Metric", values_to = "Percentage") %>%
-  # Clean up the metric names for the plot axis
   mutate(Metric = str_replace_all(Metric, "Percentage", "")) %>%
   ggplot(aes(x = reorder(Metric, -Percentage), y = Percentage, fill = Cluster)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7, color = "black") +
-  
-  # --- NEW CODE: ADD EXACT PERCENTAGES ---
   geom_text(aes(label = paste0(Percentage, "%")), 
-            position = position_dodge(width = 0.8), # Must match geom_col width
-            vjust = -0.5,                           # Pushes text just above the bar
-            size = 3.5,                             # Adjust text size if it looks cluttered
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5,                         
+            size = 3.5,                          
             fontface = "bold") +
-  # ---------------------------------------
-
 scale_fill_manual(values = c("#2c3e50", "#e74c3c")) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + # Gives text breathing room at the top
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
   labs(
     y = "Adoption Rate (%)",
     x = "Technology Category"
@@ -776,11 +780,72 @@ scale_fill_manual(values = c("#2c3e50", "#e74c3c")) +
   theme(text = element_text(size = 12, color = "black"),
         axis.title = element_text(face = "bold"),
         axis.text.x = element_text(angle = 45, hjust = 1))
-
 print(plot_tech_adoption)
 ggsave("cluster_tech_adoption_with_labels.png", plot = plot_tech_adoption, width = 9, height = 5, dpi = 300)
 
-# 1. Developer Role Distribution per Cluster
+# 2.2. Lollipop Plot for Technological Adoption
+profiles <- read_csv("rq2PersonaProfilesFinal.csv")
+dumbbell_data <- profiles %>%
+  select(Cluster, clusterSize, 
+         aiPercentage, enterpriseCloudPercentage, devOpsPercentage, 
+         sysEngPercentage, msEnterprisePercentage, modernJsPercentage, traditionalWebPercentage) %>%
+  mutate(Cluster = as.character(Cluster)) %>%
+  pivot_longer(cols = ends_with("Percentage"), names_to = "Metric", values_to = "Percentage") %>%
+  mutate(Metric = str_replace_all(Metric, "Percentage", "")) %>%
+  pivot_wider(names_from = Cluster, values_from = c(Percentage, clusterSize)) %>%
+  mutate(
+    Overall_Average = (Percentage_1 * clusterSize_1 + Percentage_2 * clusterSize_2) / (clusterSize_1 + clusterSize_2)
+  ) %>%
+  mutate(
+    Metric = case_when(
+      Metric == "ai" ~ "AI Tool Adoption",
+      Metric == "enterpriseCloud" ~ "Enterprise Cloud",
+      Metric == "devOps" ~ "DevOps Tooling",
+      Metric == "sysEng" ~ "Systems Programming",
+      Metric == "msEnterprise" ~ "Microsoft Enterprise",
+      Metric == "modernJs" ~ "Modern JS Adoption",
+      Metric == "traditionalWeb" ~ "Traditional Web"
+    )
+  ) %>%
+  arrange(Percentage_1) %>%
+  mutate(Metric = factor(Metric, levels = Metric))
+
+plot_dumbbell <- ggplot(dumbbell_data) +
+  geom_segment(aes(x = Percentage_2, xend = Percentage_1, y = Metric, yend = Metric), 
+               color = "gray80", linewidth = 1.5) +
+  geom_point(aes(x = Overall_Average, y = Metric, shape = "Overall Average"), 
+             size = 6, color = "black") +
+  geom_point(aes(x = Percentage_1, y = Metric, color = "Cluster 1: Broad-Stack Explorer"), size = 4) +
+  geom_point(aes(x = Percentage_2, y = Metric, color = "Cluster 2: Focused Practitioner"), size = 4) +
+  
+  scale_color_manual(name = "", values = c("Cluster 1: Broad-Stack Explorer" = "#e74c3c", 
+                                           "Cluster 2: Focused Practitioner" = "#2c3e50")) +
+  scale_shape_manual(name = "", values = c("Overall Average" = 124)) +
+  scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
+  
+  labs(
+    x = "Adoption Rate (%)",
+    y = ""
+  ) +
+  theme_classic() +
+  theme(
+    text = element_text(size = 12, color = "black"),
+    axis.title.x = element_text(face = "bold", margin = margin(t = 10)),
+    axis.text.y = element_text(size = 11, color = "black"),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.margin = margin(t = -10, b = 0),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linetype = "dashed")
+  ) +
+  guides(
+    color = guide_legend(order = 1),
+    shape = guide_legend(order = 2)
+  )
+print(plot_dumbbell)
+ggsave("cluster_tech_adoption_dumbbell.png", plot = plot_dumbbell, width = 9, height = 5, dpi = 300)
+
+# 3. Developer Role Distribution per Cluster
 plot_role <- clusteringResults %>%
   filter(!is.na(devRole)) %>% # Remove NAs for a cleaner legend
   count(Cluster, devRole) %>%
@@ -803,7 +868,7 @@ plot_role <- clusteringResults %>%
 print(plot_role)
 ggsave("cluster_devRole_dist.png", plot = plot_role, width = 8, height = 6, dpi = 300)
 
-# 3. Organization Size Distribution per Cluster
+# 4. Organization Size Distribution per Cluster
 plot_orgsize <- clusteringResults %>%
   filter(!is.na(OrgSize)) %>%
   # Ensure correct ordering from smallest to largest
@@ -848,12 +913,7 @@ cramersV <- sqrt(as.numeric(cs$statistic) / sum(tab))
 cramersV                         
 
 # For hyperparameter Appendix:
-
-# For the Elastic Net Logistic Regression
 print(bestLogParams)
-
-# For the Random Forest
 print(bestRfParams)
-
-# For the XGBoost Model
 print(bestXgbParams)
+
